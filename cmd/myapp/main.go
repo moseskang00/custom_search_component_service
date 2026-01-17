@@ -2,13 +2,18 @@ package main
 
 import (
 	"context"
-	//"fmt"
+	"encoding/json"
+	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
+	"strings"
+
+	"github.com/moseskang00/custom_search_component_service/common/constants"
 
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
@@ -16,6 +21,14 @@ import (
 )
 
 var logger *zap.Logger
+
+// OpenLibraryResponse represents the response from OpenLibrary search API
+type OpenLibraryResponse struct {
+	NumFound      int                      `json:"numFound"`
+	Start         int                      `json:"start"`
+	NumFoundExact bool                     `json:"numFoundExact"`
+	Docs          []map[string]interface{} `json:"docs"`
+}
 
 func main() {
 	// Load environment variables from .env file (if it exists)
@@ -98,7 +111,6 @@ func setupRouter() *gin.Engine {
 	// API routes
 	api := router.Group("/api/v1")
 	{
-		// Search endpoint (placeholder)
 		api.GET("/search", searchHandler)
 	}
 
@@ -134,20 +146,61 @@ func healthCheckHandler(c *gin.Context) {
 // Search handler (placeholder)
 func searchHandler(c *gin.Context) {
 	query := c.Query("q")
-	
 	if query == "" {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "Search query parameter 'q' is required",
 		})
 		return
 	}
+	queryWords := strings.Split(query, " ")
+	searchQuery := strings.Join(queryWords, "+")
 
-	logger.Info("Search request received", zap.String("query", query))
+	logger.Info("Search request received", zap.String("query", searchQuery))
 
-	// TODO: Implement search logic with cache and OpenLibrary API
+	searchURL := fmt.Sprintf("%s%s%s%s%s", constants.OpenLibraryAPIURL, constants.OpenLibrarySearchEndpoint, searchQuery, constants.QueryLimit, "3")
+	logger.Info("Calling OpenLibrary API", zap.String("searchURL", searchURL))
+	
+	response, err := http.Get(searchURL)
+	if err != nil {
+		logger.Error("Error getting search results", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Failed to get search results",
+		})
+		return
+	}
+
+	logger.Info("OpenLibrary API response received", zap.Int("statusCode", response.StatusCode))
+
+	defer response.Body.Close()
+
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		logger.Error("Error reading response body", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Failed to read response body",
+		})
+		return
+	}
+
+	logger.Info("API Response body", zap.String("body", string(body)))
+
+	var apiResponse OpenLibraryResponse
+	err = json.Unmarshal(body, &apiResponse)
+	if err != nil {
+		logger.Error("Error unmarshalling response body", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Failed to parse API response",
+		})
+		return
+	}
+
+	logger.Info("Search completed", 
+		zap.Int("numFound", apiResponse.NumFound),
+		zap.Int("numReturned", len(apiResponse.Docs)))
+	
 	c.JSON(http.StatusOK, gin.H{
-		"message": "Search functionality coming soon",
-		"query":   query,
-		"results": []string{},
+		"query":    query,
+		"numFound": apiResponse.NumFound,
+		"results":  apiResponse.Docs,
 	})
 }
