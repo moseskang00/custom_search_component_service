@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/moseskang00/custom_search_component_service/internal/app/handlers"
+	"github.com/moseskang00/custom_search_component_service/internal/cache"
+	redisClient "github.com/moseskang00/custom_search_component_service/internal/redis"
 
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
@@ -38,6 +40,35 @@ func main() {
 
 	// Set logger for handlers
 	handlers.SetLogger(logger)
+
+	// Initialize Redis and Cache (optional)
+	redisEnabled := os.Getenv("REDIS_ENABLED")
+	if redisEnabled == "true" {
+		redisConfig := redisClient.Config{
+			Host:         getEnv("REDIS_HOST", "localhost"),
+			Port:         getEnv("REDIS_PORT", "6379"),
+			Password:     getEnv("REDIS_PASSWORD", ""),
+			DB:           0,
+			PoolSize:     10,
+			MinIdleConns: 5,
+			MaxRetries:   3,
+			DialTimeout:  5 * time.Second,
+			ReadTimeout:  3 * time.Second,
+			WriteTimeout: 3 * time.Second,
+		}
+
+		client, err := redisClient.NewClient(redisConfig)
+		if err != nil {
+			logger.Warn("Failed to connect to Redis, running without cache", zap.Error(err))
+		} else {
+			logger.Info("Redis connected successfully")
+			searchCache := cache.NewCache(client.GetClient(), "openlibrary")
+			handlers.SetCache(searchCache)
+			defer client.Close()
+		}
+	} else {
+		logger.Info("Redis disabled, running without cache")
+	}
 
 	// Get port from environment or use default
 	port := os.Getenv("PORT")
@@ -123,4 +154,13 @@ func corsMiddleware() gin.HandlerFunc {
 
 		c.Next()
 	}
+}
+
+// getEnv gets an environment variable with a default fallback
+func getEnv(key, defaultValue string) string {
+	value := os.Getenv(key)
+	if value == "" {
+		return defaultValue
+	}
+	return value
 }

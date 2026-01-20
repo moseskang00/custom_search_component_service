@@ -28,8 +28,8 @@ type Config struct {
 	ConnectTimeout time.Duration
 }
 
-func NewClient(config Config) *Client {
-	address := fmt.Sprintf("%s:%s", config.Host, config.Port)=
+func NewClient(config Config) (*Client, error) {
+	address := fmt.Sprintf("%s:%s", config.Host, config.Port)
 
 	options := &redis.Options{
 		Addr: address,
@@ -52,7 +52,7 @@ func NewClient(config Config) *Client {
         return nil, fmt.Errorf("failed to connect to Redis: %w", err)
     }
     
-    log.Printf("Connected to Redis at %s", addr)
+    log.Printf("Connected to Redis at %s", address)
     
     return &Client{
         client: client,
@@ -61,10 +61,9 @@ func NewClient(config Config) *Client {
 }
 
 func (c *Client) Close() error {
-	if c.Client != nil {
-		return c.Client.Close()
+	if c.client != nil {
+		return c.client.Close()
 	}
-
 	return nil
 }
 

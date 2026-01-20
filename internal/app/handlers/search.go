@@ -6,9 +6,11 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/moseskang00/custom_search_component_service/common/constants"
+	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 )
 
@@ -25,6 +27,28 @@ func Search(c *gin.Context) {
 	searchQuery := strings.Join(queryWords, "+")
 
 	Logger.Info("Search request received", zap.String("query", searchQuery))
+
+	// Try to get from cache first
+	cacheKey := fmt.Sprintf("search:%s", searchQuery)
+	var cachedResponse OpenLibraryResponse
+	
+	if Cache != nil {
+		err := Cache.GetJSON(cacheKey, &cachedResponse)
+		if err == nil {
+			Logger.Info("Cache hit", zap.String("query", searchQuery))
+			c.JSON(http.StatusOK, gin.H{
+				"query":    query,
+				"numFound": cachedResponse.NumFound,
+				"results":  cachedResponse.Docs,
+				"cached":   true,
+			})
+			return
+		} else if err != redis.Nil {
+			Logger.Warn("Cache error", zap.Error(err))
+		}
+	}
+
+	Logger.Info("Cache miss, calling API", zap.String("query", searchQuery))
 
 	searchURL := fmt.Sprintf("%s%s%s%s%s", 
 		constants.OpenLibraryAPIURL, 
@@ -71,10 +95,20 @@ func Search(c *gin.Context) {
 		zap.Int("numFound", apiResponse.NumFound),
 		zap.Int("numReturned", len(apiResponse.Docs)))
 
+	// Store in cache (30 minutes TTL)
+	if Cache != nil {
+		err = Cache.Set(cacheKey, apiResponse, 2*time.Minute)
+		if err != nil {
+			Logger.Warn("Failed to cache result", zap.Error(err))
+		} else {
+			Logger.Info("Result cached", zap.String("key", cacheKey))
+		}
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"query":    query,
 		"numFound": apiResponse.NumFound,
 		"results":  apiResponse.Docs,
+		"cached":   false,
 	})
 }
-

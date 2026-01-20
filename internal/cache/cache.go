@@ -10,10 +10,10 @@ import (
 )
 
 type Cache struct {
-	redisClient &redis.client
-	ctx context.Context
-	prefix string
-}	
+	redisClient *redis.Client
+	ctx         context.Context
+	prefix      string
+}
 
 func NewCache(client *redis.Client, prefix string) *Cache {
 	return &Cache{
