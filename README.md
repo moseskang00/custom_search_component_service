@@ -109,10 +109,7 @@ curl "http://localhost:8080/api/v1/search?q=harry+potter"
 ```
 
 ## Next Steps
-
-1. Basic HTTP server setup
-2. Implement OpenLibrary API client
-3. Add in-memory caching layer
+3. implement fuzzy searches
 4. Implement rate limiting (?)
 5. Add Redis support for distributed caching
 6. Write unit tests
